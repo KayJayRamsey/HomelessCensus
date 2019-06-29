@@ -1,37 +1,100 @@
-from flask import Flask, render_template, redirect
-from flask_pymongo import PyMongo
-import scrape_mars
+import os
 
-# Create an instance of Flask
+import pandas as pd
+import numpy as np
+
+import sqlalchemy
+from sqlalchemy.ext.automap import automap_base
+from sqlalchemy.orm import Session
+from sqlalchemy import create_engine
+
+from flask import Flask, jsonify, render_template, url_for
+from flask_sqlalchemy import SQLAlchemy
+
 app = Flask(__name__)
 
-# Use PyMongo to establish Mongo connection
-mongo = PyMongo(app, uri="mongodb://localhost:27017/medicalcost_app")
+
+#################################################
+# Database Setup
+#################################################
+
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///db/insurance.sqlite"
+db = SQLAlchemy(app)
+
+# reflect an existing database into a new model
+Base = automap_base()
+# reflect the tables
+Base.prepare(db.engine, reflect=True)
+
+# Save references to each table
+Medical_cost = Base.classes.insurance
 
 
-# Route to render index.html template using data from Mongo
 @app.route("/")
-def home():
-    insurance_data = mongo.db.medical_info.find_one()
+def index():
+    """Return the homepage."""
+    return render_template("index.html")
 
-    # Return template and data
-    return render_template("index.html", insurance_data=insurance_data)
 
-# Route that will trigger scrape function
-@app.route("/scrape")
-def scrape(): 
+@app.route("/names")
+def names():
+    """Return a list of sample names."""
 
-    # Run scrapped functions
-    insurance_data = mongo.db.insurance_data
-    medical_info = scrape_mars.mars_news()
-    medical_info = scrape_mars.nasa_image()
-    mars_info = scrape_mars.mars_weather_data()
-    mars_info = scrape_mars.mars_table_data()
-    mars_info = scrape_mars.space_facts()
-    mars_data.update({}, mars_info, upsert=True)
+    # Use Pandas to perform the sql query
+    stmt = db.session.query(Samples).statement
+    df = pd.read_sql_query(stmt, db.session.bind)
 
-    return redirect("/", code=302)
+    # Return a list of the column names (sample names)
+    return jsonify(list(df.columns)[2:])
 
-if __name__ == "__main__": 
-    app.run(debug= True)
-  
+
+@app.route("/metadata/<sample>")
+def sample_metadata(sample):
+    """Return the MetaData for a given sample."""
+    sel = [
+        Medical_cost.sample,
+        Medical_cost.ETHNICITY,
+        Medical_cost.GENDER,
+        Medical_cost.AGE,
+        Medical_cost.LOCATION,
+        Medical_cost.BBTYPE,
+        Medical_cost.WFREQ,
+    ]
+
+    results = db.session.query(*sel).filter(Samples_Metadata.sample == sample).all()
+ 
+    # Create a dictionary entry for each row of metadata information
+    sample_metadata = {}
+    for result in results:
+        sample_metadata["sample"] = result[0]
+        sample_metadata["ETHNICITY"] = result[1]
+        sample_metadata["GENDER"] = result[2]
+        sample_metadata["AGE"] = result[3]
+        sample_metadata["LOCATION"] = result[4]
+        sample_metadata["BBTYPE"] = result[5]
+        sample_metadata["WFREQ"] = result[6]
+
+    print(sample_metadata)
+    return jsonify(sample_metadata)
+
+
+@app.route("/samples/<sample>")
+def samples(sample):
+    """Return `otu_ids`, `otu_labels`,and `sample_values`."""
+    stmt = db.session.query(Samples).statement
+    df = pd.read_sql_query(stmt, db.session.bind)
+
+    # Filter the data based on the sample number and
+    # only keep rows with values above 1
+    sample_data = df.loc[df[sample] > 1, ["otu_id", "otu_label", sample]]
+    # Format the data to send as json
+    data = {
+        "otu_ids": sample_data.otu_id.values.tolist(),
+        "sample_values": sample_data[sample].values.tolist(),
+        "otu_labels": sample_data.otu_label.tolist(),
+    }
+    return jsonify(data)
+
+
+if __name__ == "__main__":
+    app.run()
