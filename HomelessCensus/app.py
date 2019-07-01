@@ -18,7 +18,7 @@ app = Flask(__name__)
 # Database Setup
 #################################################
 
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///db/insurance.sqlite"
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///db/insurance.csv"
 db = SQLAlchemy(app)
 
 # reflect an existing database into a new model
@@ -27,7 +27,7 @@ Base = automap_base()
 Base.prepare(db.engine, reflect=True)
 
 # Save references to each table
-Medical_cost = Base.classes.insurance
+Medical_cost = Base.classes.insurance2
 
 
 @app.route("/")
@@ -41,7 +41,7 @@ def names():
     """Return a list of sample names."""
 
     # Use Pandas to perform the sql query
-    stmt = db.session.query(Samples).statement
+    stmt = db.session.query(Medical_cost).statement
     df = pd.read_sql_query(stmt, db.session.bind)
 
     # Return a list of the column names (sample names)
@@ -52,13 +52,13 @@ def names():
 def sample_metadata(sample):
     """Return the MetaData for a given sample."""
     sel = [
-        Medical_cost.sample,
-        Medical_cost.ETHNICITY,
-        Medical_cost.GENDER,
-        Medical_cost.AGE,
-        Medical_cost.LOCATION,
-        Medical_cost.BBTYPE,
-        Medical_cost.WFREQ,
+        Medical_cost.age,
+        Medical_cost.sex,
+        Medical_cost.bmi,
+        Medical_cost.children,
+        Medical_cost.smoker,
+        Medical_cost.region,
+        Medical_cost.charges,
     ]
 
     results = db.session.query(*sel).filter(Samples_Metadata.sample == sample).all()
@@ -66,13 +66,13 @@ def sample_metadata(sample):
     # Create a dictionary entry for each row of metadata information
     sample_metadata = {}
     for result in results:
-        sample_metadata["sample"] = result[0]
-        sample_metadata["ETHNICITY"] = result[1]
-        sample_metadata["GENDER"] = result[2]
-        sample_metadata["AGE"] = result[3]
-        sample_metadata["LOCATION"] = result[4]
-        sample_metadata["BBTYPE"] = result[5]
-        sample_metadata["WFREQ"] = result[6]
+        Medical_cost["age"] = result[0]
+        Medical_cost["sex"] = result[1]
+        Medical_cost["bmi"] = result[2]
+        Medical_cost["children"] = result[3]
+        Medical_cost["smoker"] = result[4]
+        Medical_cost["region"] = result[5]
+        Medical_cost["charges"] = result[6]
 
     print(sample_metadata)
     return jsonify(sample_metadata)
@@ -80,18 +80,18 @@ def sample_metadata(sample):
 
 @app.route("/samples/<sample>")
 def samples(sample):
-    """Return `otu_ids`, `otu_labels`,and `sample_values`."""
-    stmt = db.session.query(Samples).statement
+    """Return `variable`, `group`,and `value`."""
+    stmt = db.session.query(Medical_cost).statement
     df = pd.read_sql_query(stmt, db.session.bind)
 
     # Filter the data based on the sample number and
     # only keep rows with values above 1
-    sample_data = df.loc[df[sample] > 1, ["otu_id", "otu_label", sample]]
+    sample_data = df.loc[df[sample] > 1, ["group", "variable", sample]]
     # Format the data to send as json
     data = {
-        "otu_ids": sample_data.otu_id.values.tolist(),
-        "sample_values": sample_data[sample].values.tolist(),
-        "otu_labels": sample_data.otu_label.tolist(),
+        "variable": sample_data.otu_id.values.tolist(),
+        "value": sample_data[sample].values.tolist(),
+        "group": sample_data.otu_label.tolist(),
     }
     return jsonify(data)
 
