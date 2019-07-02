@@ -8,65 +8,51 @@ from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine
 
-from flask import Flask, jsonify, render_template, url_for
+from flask import Flask, jsonify, render_template, redirect
 from flask_sqlalchemy import SQLAlchemy
-from flask import Flask, jsonify
 
 app = Flask(__name__)
 
-engine = create_engine("sqlite:///db/insurance.sqlite")
+
+#################################################
+# Database Setup
+#################################################
+
+engine = create_engine("sqlite:///insurance.sqlite")
 
 # reflect an existing database into a new model
 Base = automap_base()
-
 # reflect the tables
 Base.prepare(engine, reflect=True)
 
-# Save reference to the table
+# Save references to each table
+Samples_Metadata = Base.classes.medical
 Medical = Base.classes.medical
 
-# Create our session (link) from Python to the DB
 session = Session(engine)
 
 @app.route("/")
-def index():
-    """Return the homepage."""
-    return render_template("index.html")
+def welcome():
+    try:
+        return render_template('index.html')
+    except:
+        return redirect("/plots", code=302)
+        
 
 @app.route("/plots")
-def sample(plots):
+def samples():
 
-   sel = [
-        Medical.age,
-        Medical.sex,
-        Medical.bmi,
-        Medical.children,
-        Medical.smoker,
-        Medical.region,
-        Medical.charges,
-    ]
+    stmt = session.query(Medical).statement
+    df = pd.read_sql_query(stmt, session.bind)
 
-    results = db.session.query(*sel).filter(Medical).all()
- 
-    # Create a dictionary entry for each row of metadata information
-    data = {}
-    for result in results:
-        Medical["age"] = result[0]
-        Medical["sex"] = result[1]
-        Medical["bmi"] = result[2]
-        Medical["children"] = result[3]
-        Medical["smoker"] = result[4]
-        Medical["region"] = result[5]
-        Medical["charges"] = result[6]
+    
+    # Format the data to send as json
+    age = df["age"].map(int)
+    bmi = df["bmi"].map(int)
+    charges = df["charges"].map(int)
+    data = {"age": age.values.tolist(),"bmi": bmi.values.tolist(),"charges": charges.values.tolist()}
+    
+    return jsonify(data), redirect("/", code=302)
 
-    print(data)
-    return jsonify(data)
-
-@app.route("/")
-def index():
-    """Return the homepage."""
-
-    return render_template('index.html')
 
 if __name__ == "__main__":
-    app.run(debug=True)
